@@ -1,7 +1,7 @@
 "use client";
 
 import { useModuleStore, TEMPLATES, type TemplateType } from "@/lib/store";
-import { useMagnetMatching, GLOBAL_STATUS_COLOR } from "@/lib/magnetMatching";
+import { useMagnetMatching } from "@/lib/magnetMatching";
 
 const DETAILS: Record<TemplateType, { purpose: string; tips: string[] }> = {
   base:               { purpose: "Bloque sólido magnético. Base universal.", tips: ["Ideal como módulo de esquina", "Apila varios para ganar altura"] },
@@ -134,20 +134,21 @@ export function PropertiesPanel() {
           </div>
         </PSection>
 
-        {/* Imanes (Global) */}
-        <PSection title="Imanes (Global)">
-          <div
-            className="rounded border px-3 py-2 text-xs font-medium flex items-center justify-between"
-            style={{
-              borderColor: GLOBAL_STATUS_COLOR[summary.status],
-              backgroundColor: `${GLOBAL_STATUS_COLOR[summary.status]}18`,
-              color: GLOBAL_STATUS_COLOR[summary.status],
-            }}
-          >
-            <span>Imanes sin match</span>
-            <span className="text-sm font-semibold">{summary.unmatchedCount}</span>
-          </div>
-        </PSection>
+        {/* Imanes (Global) — solo visible cuando hay orificios sin match */}
+        {summary.status !== "ok" && (
+          <PSection title="Imanes (Global)">
+            <div
+              className={`rounded border px-3 py-2 text-xs leading-snug flex items-center gap-2 ${
+                summary.status === "error"
+                  ? "border-red-600/30 bg-red-600/10 text-red-300"
+                  : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+              }`}
+            >
+              <span className="flex-shrink-0">⚠</span>
+              <span className="flex-1">Imanes sin match: {summary.unmatchedCount}</span>
+            </div>
+          </PSection>
+        )}
 
         {/* Tips */}
         {details.tips.length > 0 && (

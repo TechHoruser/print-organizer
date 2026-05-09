@@ -236,11 +236,19 @@ function buildEdges(modules: ModuleInstance[], eps: number = EPS): Edge[] {
 
 /**
  * For two modules joined by `edge` (cur is the parent), pick the shift S along
- * the edge's perpendicular axis such that `nb.perp = cur.perp + S` aligns the
- * maximum number of active magnet pairs across the touching faces.
+ * the edge's perpendicular axis such that `nb.perp = cur.perp + S` aligns one
+ * pair of active magnets while moving `nb` as little as possible from its
+ * current world position.
+ *
+ * Each candidate S = curLats[i] - nbLats[j] aligns the (i, j) pair exactly,
+ * so the "≥1 match" requirement is satisfied by construction. Among
+ * candidates we pick the one minimising |S - currentOffset|, where
+ * currentOffset is nb's existing perpendicular displacement relative to cur.
+ * This snaps the magnets that are already closest to each other instead of
+ * sliding nb to a far-away pairing just because it would align more pairs.
  *
  * Returns null when either side has no active holes on the touching face — in
- * that case the perpendicular position should be left untouched.
+ * that case the perpendicular position is left untouched.
  */
 function bestPerpShift(
   cur:        ModuleInstance,
@@ -274,27 +282,19 @@ function bestPerpShift(
   const curLats = curHoles.map(lat);
   const nbLats  = nbHoles.map(lat);
 
-  // Each (i,j) pair → candidate shift S = curLats[i] - nbLats[j].
-  // Pick the S that maximises the number of (k,m) pairs that align after
-  // applying it. Ties broken by smallest |S| (least disruption).
-  let bestShift = 0;
-  let bestCount = -1;
-  let bestAbs   = Infinity;
+  // nb's current perpendicular offset relative to cur, before any snapping.
+  const currentOffset = edge.axis === "x" ? (nb.z - cur.z) : (nb.x - cur.x);
+
+  let bestShift = currentOffset;
+  let bestDelta = Infinity;
 
   for (const cl of curLats) {
     for (const nl of nbLats) {
       const S = cl - nl;
-      let count = 0;
-      for (const c of curLats) {
-        for (const n of nbLats) {
-          if (Math.abs(c - n - S) < JOIN_MATCH_TOL) count++;
-        }
-      }
-      const abs = Math.abs(S);
-      if (count > bestCount || (count === bestCount && abs < bestAbs)) {
+      const delta = Math.abs(S - currentOffset);
+      if (delta < bestDelta) {
         bestShift = S;
-        bestCount = count;
-        bestAbs   = abs;
+        bestDelta = delta;
       }
     }
   }

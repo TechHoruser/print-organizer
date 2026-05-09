@@ -157,12 +157,19 @@ export function computeHoleStates(
       if (mb.id === ha.moduleId) continue;
       if (!isFaceAdjacentTo(ha.worldPos, ha.normal, ha.moduleRef, mb)) continue;
 
-      // B is adjacent — look for a hole in B that matches position and has opposite normal
-      const matched = holesByModule.get(mb.id)!.some(
-        hb =>
-          ha.worldPos.distanceTo(hb.worldPos) <= MATCH_TOLERANCE &&
-          ha.normal.dot(hb.normal) <= -0.9,
-      );
+      // B is adjacent — look for a hole in B that matches position and has opposite normal.
+      // Compare only the in-plane coordinates (perpendicular to the normal): hole
+      // centers are sunk into their own face by ~1.3 mm, so the along-normal gap
+      // between two touching faces is ~2.6 mm and full 3D distance never matches.
+      const isEW = Math.abs(ha.normal.x) > 0.5;
+      const matched = holesByModule.get(mb.id)!.some(hb => {
+        if (ha.normal.dot(hb.normal) > -0.9) return false;
+        const dy   = Math.abs(ha.worldPos.y - hb.worldPos.y);
+        const dlat = isEW
+          ? Math.abs(ha.worldPos.z - hb.worldPos.z)
+          : Math.abs(ha.worldPos.x - hb.worldPos.x);
+        return dy <= MATCH_TOLERANCE && dlat <= MATCH_TOLERANCE;
+      });
 
       if (matched) {
         state = "matched";

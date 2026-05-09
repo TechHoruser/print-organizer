@@ -47,6 +47,7 @@ export function SingleModule({
   onToggleHole,
 }: Props) {
   const { camera, gl } = useThree();
+  const controls = useThree(s => s.controls) as { enabled: boolean } | null;
 
   // ── Geometry & holes (memoised) ──────────────────────────────────────────
   const params = useMemo(
@@ -121,6 +122,8 @@ export function SingleModule({
       setIsDragging(true);
       onSelect();
 
+      if (controls) controls.enabled = false;
+
       const onMove_ = (ev: PointerEvent) => {
         if (!dragging.current) return;
         const w = worldFromEvent(ev.clientX, ev.clientY);
@@ -131,15 +134,25 @@ export function SingleModule({
       const onUp_ = () => {
         dragging.current = false;
         setIsDragging(false);
-        document.removeEventListener("pointermove", onMove_);
-        document.removeEventListener("pointerup",   onUp_);
+        if (controls) controls.enabled = true;
+        document.removeEventListener("pointermove",   onMove_);
+        document.removeEventListener("pointerup",     onUp_);
+        document.removeEventListener("pointercancel", onUp_);
       };
 
-      document.addEventListener("pointermove", onMove_);
-      document.addEventListener("pointerup",   onUp_);
+      document.addEventListener("pointermove",   onMove_);
+      document.addEventListener("pointerup",     onUp_);
+      document.addEventListener("pointercancel", onUp_);
     },
-    [worldFromEvent, instance.x, instance.z, onSelect, onMove],
+    [worldFromEvent, instance.x, instance.z, onSelect, onMove, controls],
   );
+
+  // Defensive cleanup: if the component unmounts mid-drag, restore controls.
+  useEffect(() => {
+    return () => {
+      if (dragging.current && controls) controls.enabled = true;
+    };
+  }, [controls]);
 
   return (
     <group position={[instance.x, 0, instance.z]}>
@@ -169,43 +182,69 @@ export function SingleModule({
         const ny = hole.normal.y;
         const nz = hole.normal.z;
         const p  = isActive ? 0.5 : 1.5; // active rings are closer to flush
+        const pos: [number, number, number] = [
+          hole.position.x + nx * p,
+          hole.position.y + ny * p + instance.heightMm / 2,
+          hole.position.z + nz * p,
+        ];
+        const rot = torusRotation(nx);
+
+        if (isActive) {
+          const state = holeStates?.get(`${instance.id}:${hole.key}`);
+          const color = state ? HOLE_STATE_COLOR[state] : "#fbbf24";
+          return (
+            <group key={hole.key}>
+              {/* Pass normal: visible cuando no hay geometría por delante */}
+              <mesh
+                position={pos}
+                rotation={rot}
+                onClick={(e) => { e.stopPropagation(); onToggleHole(hole.key); }}
+                onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+                onPointerOut={() => { document.body.style.cursor = "default"; }}
+              >
+                <torusGeometry args={[MAGNET_RADIUS_MM - 0.5, 1, 8, 24]} />
+                <meshStandardMaterial
+                  color={color}
+                  emissive={color}
+                  emissiveIntensity={0.45}
+                  roughness={0.2}
+                  metalness={0.9}
+                />
+              </mesh>
+              {/* Pass x-ray: visible a través de paredes (depthTest desactivado) */}
+              <mesh position={pos} rotation={rot} renderOrder={999}>
+                <torusGeometry args={[MAGNET_RADIUS_MM - 0.5, 1, 8, 24]} />
+                <meshBasicMaterial
+                  color={color}
+                  transparent
+                  opacity={0.25}
+                  depthTest={false}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          );
+        }
+
         return (
           <mesh
             key={hole.key}
-            position={[
-              hole.position.x + nx * p,
-              hole.position.y + ny * p + instance.heightMm / 2,
-              hole.position.z + nz * p,
-            ]}
-            rotation={torusRotation(nx)}
+            position={pos}
+            rotation={rot}
             onClick={(e) => { e.stopPropagation(); onToggleHole(hole.key); }}
             onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
             onPointerOut={() => { document.body.style.cursor = "default"; }}
           >
             <torusGeometry args={[MAGNET_RADIUS_MM - 0.5, 1, 8, 24]} />
-            {isActive ? (() => {
-              const state = holeStates?.get(`${instance.id}:${hole.key}`);
-              const color = state ? HOLE_STATE_COLOR[state] : "#fbbf24";
-              return (
-                <meshStandardMaterial
-                  color={color}
-                  emissive={color}
-                  emissiveIntensity={0.35}
-                  roughness={0.2}
-                  metalness={0.9}
-                />
-              );
-            })() : (
-              <meshStandardMaterial
-                color="#6b7280"
-                emissive="#374151"
-                emissiveIntensity={0.2}
-                roughness={0.5}
-                metalness={0.3}
-                transparent
-                opacity={0.7}
-              />
-            )}
+            <meshStandardMaterial
+              color="#6b7280"
+              emissive="#374151"
+              emissiveIntensity={0.2}
+              roughness={0.5}
+              metalness={0.3}
+              transparent
+              opacity={0.7}
+            />
           </mesh>
         );
       })}
